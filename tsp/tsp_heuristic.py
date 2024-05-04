@@ -4,11 +4,10 @@ import torch
 
 CONST = 100000.0
 def calc_dist(p, q):
-    return np.sqrt(((p[1] - q[1])**2)+((p[0] - q[0]) **2)) * CONST
+    return np.sqrt(((p[1] - q[1])**2)+((p[0] - q[0])**2)) * CONST
 
 def get_ref_reward(pointset):
-
-    if isinstance(pointset, torch.cuda.FloatTensor) or  isinstance(pointset, torch.FloatTensor):
+    if isinstance(pointset, torch.cuda.FloatTensor) or isinstance(pointset, torch.FloatTensor):
         pointset = pointset.detach().numpy()
 
     num_points = len(pointset)

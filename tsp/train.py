@@ -48,14 +48,14 @@ def train(train_dataset, test_dataset, args):
     if args.use_cuda:
         moving_avg = moving_avg.cuda()
 
-    #generating first baseline
+    # Generating first baseline
     for (indices, sample_batch) in tqdm(train_data_loader):
         if args.use_cuda:
             sample_batch = sample_batch.cuda()
         rewards, _, _ = model(sample_batch)
         moving_avg[indices] = rewards
 
-    #Training
+    # Training
     model.train()
     for epoch in range(args.num_epochs):
         for batch_idx, (indices, sample_batch) in enumerate(train_data_loader):

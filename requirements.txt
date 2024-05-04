@@ -1,0 +1,13 @@
+basemap
+elkai
+ipykernel
+matplotlib
+networkx
+numpy
+ogb
+pandas
+pytest
+scipy
+torch>=2.0.0
+torch_geometric
+tqdm

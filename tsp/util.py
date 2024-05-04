@@ -8,7 +8,7 @@ from .solver import solver_RNN
 from torch.utils.data import DataLoader
 from typing import Optional
 
-MODEL_SAVE_FOLDER = './hw1/trained_models/'
+MODEL_SAVE_FOLDER = './ckpt/'
 
 def save(model: object, args: dict, name: str) -> None:
     path = MODEL_SAVE_FOLDER + name
