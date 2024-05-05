@@ -277,7 +277,7 @@ class RNNTSP(torch.nn.Module):
 
             # Force heuristic
             if torch.rand(1) < self.force_prob and len(prev_chosen_indices) > 0:
-                self.chosen = self.heuristic(inputs, torch.stack(prev_chosen_indices, 1)).type(self.chosen.dtype)
+                self.chosen = self.heuristic(inputs, torch.stack(prev_chosen_indices, 1), device=device).type(self.chosen.dtype)
 
             prev_chosen_indices.append(self.chosen)
             mask[[i for i in range(batch_size)], self.chosen] = True
@@ -291,16 +291,18 @@ class TSPArgs(argparse.Namespace):
         self.model = RNNTSP
         self.seq_len = 30
         self.num_epochs = 100
-        self.num_tr_dataset = 100 # 10000
-        self.num_te_dataset = 20 # 2000
+        self.num_tr_dataset = 10000
+        self.num_te_dataset = 2000
         self.embedding_size = 128
         self.hidden_size = 128
         self.batch_size = 64
         self.grad_clip = 1.5
-        self.use_cuda = False # True
+        self.use_cuda = True
         self.beta = 0.9
-        self.force_prob = 0.7
+        self.force_prob = 1.0
         self.heuristic = nearest_neighbor
+        self.name = f"force_prob={self.force_prob}"
+        self.disable_tqdm = None
 
 args = TSPArgs()
 train_dataset = TSPDataset()
@@ -309,7 +311,7 @@ train_dataset.random_fill(args.seq_len, args.num_tr_dataset)
 test_dataset.random_fill(args.seq_len, args.num_te_dataset)
 
 model = train(train_dataset, test_dataset, args)
-save(model, args, "pre_trained_rnn")
+save(model, args, args.name)
 
 
 def normalize(embeddings):

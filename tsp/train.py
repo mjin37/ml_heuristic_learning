@@ -24,7 +24,7 @@ def train(train_dataset, test_dataset, args):
 
     # Calculating heuristics
     heuristic_distance = torch.zeros(args.num_te_dataset)
-    for i, pointset in tqdm(test_dataset):
+    for i, pointset in tqdm(test_dataset, disable=args.disable_tqdm):
         heuristic_distance[i] = get_ref_reward(pointset)
 
     model = solver_RNN(
@@ -51,7 +51,7 @@ def train(train_dataset, test_dataset, args):
         moving_avg = moving_avg.cuda()
 
     # Generating first baseline
-    for (indices, sample_batch) in tqdm(train_data_loader):
+    for (indices, sample_batch) in tqdm(train_data_loader, disable=args.disable_tqdm):
         if args.use_cuda:
             sample_batch = sample_batch.cuda()
         rewards, _, _ = model(sample_batch)

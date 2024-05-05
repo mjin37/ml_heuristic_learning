@@ -7,10 +7,12 @@ def calc_dist(p, q):
     return np.sqrt(((p[1] - q[1])**2)+((p[0] - q[0])**2)) * CONST
 
 def batch_calc_dist(p, q):
-    return np.sqrt(((p[:, 1] - q[:, 1])**2)+((p[:, 0] - q[:, 0])**2)) * CONST
+    return torch.sqrt(((p[:, 1] - q[:, 1])**2)+((p[:, 0] - q[:, 0])**2)) * CONST
 
 def get_ref_reward(pointset):
-    if isinstance(pointset, torch.cuda.FloatTensor) or isinstance(pointset, torch.FloatTensor):
+    if isinstance(pointset, torch.cuda.FloatTensor):
+        pointset = pointset.cpu()
+    if isinstance(pointset, torch.FloatTensor):
         pointset = pointset.detach().numpy()
 
     num_points = len(pointset)
@@ -24,16 +26,13 @@ def get_ref_reward(pointset):
         dist += ret_matrix[q[i], q[(i+1) % num_points]]
     return dist / CONST
 
-def get_distance_matrix(pointset):
-    if isinstance(pointset, torch.cuda.FloatTensor) or isinstance(pointset, torch.FloatTensor):
-        pointset = pointset.detach().numpy()
-
+def get_distance_matrix(pointset, device='cpu'):
     batch_size, num_points, dims = pointset.shape
-    ret_matrix = np.zeros((batch_size, num_points, num_points))
+    ret_matrix = torch.zeros((batch_size, num_points, num_points)).to(device)
     for i in range(num_points):
         for j in range(i+1, num_points):
             ret_matrix[:,i,j] = ret_matrix[:,j,i] = batch_calc_dist(pointset[:, i], pointset[:, j])
-    return torch.tensor(ret_matrix)
+    return ret_matrix
 
 
 # def get_ordered_sub_tour(sub_tour,placements):
@@ -42,7 +41,7 @@ def get_distance_matrix(pointset):
 
 #     return ordered_sub_tour
 
-def nearest_neighbor(pointset, subtour, placements=None):
+def nearest_neighbor(pointset, subtour, placements=None, device='cpu'):
     """
     This function returns the next node from the nearest neighbor sequential heuristic.
     
@@ -50,13 +49,13 @@ def nearest_neighbor(pointset, subtour, placements=None):
         distance_matrix: 2D matrix whose i,j^th element is the distance on i -> j
         subtour: list of selected city indices, placements is not used for this
     """
-    distance_matrix = get_distance_matrix(pointset)
+    distance_matrix = get_distance_matrix(pointset, device=device)
     batch_size, num_cities, _ = distance_matrix.shape
     if subtour.size == 0:
         raise ValueError("Subtour is empty.")
     last_city = subtour[:, -1][:, None]
-    curr_min_dist = 2 * CONST * torch.ones(batch_size)
-    chosen_city_index = torch.zeros(batch_size)
+    curr_min_dist = 2 * CONST * torch.ones(batch_size).to(device)
+    chosen_city_index = torch.zeros(batch_size).to(device)
     for i in range(num_cities):
         curr_dist = distance_matrix[:, :, i].gather(dim=1, index=last_city).squeeze(1)
         curr_dist += torch.nan_to_num(np.inf * torch.sum(i == subtour, dim=1))

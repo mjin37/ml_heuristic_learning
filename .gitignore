@@ -1,3 +1,4 @@
 ml4do/
-chkpt/
+ckpt/
 __pycache__/
+*.tar*
