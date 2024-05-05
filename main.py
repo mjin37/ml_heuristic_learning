@@ -16,6 +16,7 @@ print('Using device:', device)
 from tsp.util import save, load, compute_solution, plot_tsp
 from tsp.train import train
 from tsp.data import TSPDataset
+from tsp.heuristic import nearest_neighbor
 
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
@@ -88,15 +89,19 @@ class RNNTSP(torch.nn.Module):
         hidden_size,
         seq_len,
         n_glimpses,
-        tanh_exploration
+        tanh_exploration,
+        force_prob,
+        heuristic,
     ):
         super(RNNTSP, self).__init__()
-
 
         self.embedding_size = embedding_size
         self.hidden_size = hidden_size
         self.n_glimpses = n_glimpses
         self.seq_len = seq_len
+
+        self.force_prob = force_prob
+        self.heuristic = heuristic
 
         self.embedding = None
         self.encoder = None
@@ -187,7 +192,6 @@ class RNNTSP(torch.nn.Module):
         for _ in range(seq_len):
 
             def _decode(decoder_input, hidden, context):
-
                 query = None
                 new_hidden = None
                 new_context = None
@@ -268,11 +272,16 @@ class RNNTSP(torch.nn.Module):
             self.cat, self.chosen = _attend(self.query, self.encoder_outputs, mask=mask.clone())
 
             # Mark visited cities, update decoder input
-            mask[[i for i in range(batch_size)], self.chosen] = True
             log_probs = self.cat.log_prob(self.chosen)
-            decoder_input = self.embedded.gather(1, self.chosen[:, None, None].repeat(1, 1, self.hidden_size)).squeeze(1)
             prev_chosen_logprobs.append(log_probs)
+
+            # Force heuristic
+            if torch.rand(1) < self.force_prob and len(prev_chosen_indices) > 0:
+                self.chosen = self.heuristic(inputs, torch.stack(prev_chosen_indices, 1)).type(self.chosen.dtype)
+
             prev_chosen_indices.append(self.chosen)
+            mask[[i for i in range(batch_size)], self.chosen] = True
+            decoder_input = self.embedded.gather(1, self.chosen[:, None, None].repeat(1, 1, self.hidden_size)).squeeze(1)
 
         return torch.stack(prev_chosen_logprobs, 1), torch.stack(prev_chosen_indices, 1)
 
@@ -282,7 +291,7 @@ class TSPArgs(argparse.Namespace):
         self.model = RNNTSP
         self.seq_len = 30
         self.num_epochs = 100
-        self.num_tr_dataset = 10 # 10000
+        self.num_tr_dataset = 100 # 10000
         self.num_te_dataset = 20 # 2000
         self.embedding_size = 128
         self.hidden_size = 128
@@ -290,6 +299,8 @@ class TSPArgs(argparse.Namespace):
         self.grad_clip = 1.5
         self.use_cuda = False # True
         self.beta = 0.9
+        self.force_prob = 0.7
+        self.heuristic = nearest_neighbor
 
 args = TSPArgs()
 train_dataset = TSPDataset()

@@ -7,13 +7,14 @@ class Solver(nn.Module):
     def __init__(self):
         super(Solver, self).__init__()
 
+        self.actor = None
+
     def reward(self, sample_solution):
         """
         Args:
             sample_solution seq_len of [batch_size]
             torch.LongTensor [batch_size x seq_len x 2]
         """
-
         batch_size, seq_len, _ = sample_solution.size()
 
         tour_len = Variable(torch.zeros([batch_size]))
@@ -42,18 +43,8 @@ class solver_RNN(Solver):
     def __init__(
         self,
         model,
-        embedding_size,
-        hidden_size,
-        seq_len,
-        n_glimpses,
-        tanh_exploration
+        *args
     ):
         super(solver_RNN, self).__init__()
 
-        self.actor = model(
-            embedding_size,
-            hidden_size,
-            seq_len,
-            n_glimpses,
-            tanh_exploration
-        )
+        self.actor = model(*args)

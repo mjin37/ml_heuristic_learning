@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from .solver import solver_RNN
-from .tsp_heuristic import get_ref_reward
+from .heuristic import get_ref_reward
 
 
 def train(train_dataset, test_dataset, args):
@@ -33,7 +33,9 @@ def train(train_dataset, test_dataset, args):
         args.hidden_size,
         args.seq_len,
         2,
-        10
+        10,
+        args.force_prob,
+        args.heuristic,
     )
 
     if args.use_cuda:
