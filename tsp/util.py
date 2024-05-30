@@ -1,14 +1,19 @@
 import pickle
+import elkai
+import math
 import torch
+import numpy as np
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.basemap import Basemap
 
-from .solver import solver_RNN
+from .solver import Solver
 from torch.utils.data import DataLoader
 from typing import Optional
 
 MODEL_SAVE_FOLDER = './ckpt/'
+
+# TODO: add Held-Karp lower bound calculation?
 
 def save(model: object, args: dict, name: str) -> None:
     path = MODEL_SAVE_FOLDER + name
@@ -19,7 +24,7 @@ def load(model: object, name: str, device: str) -> object:
     path = MODEL_SAVE_FOLDER + name
     args = pickle.load(open(path + '_args.pickle', 'rb'))
     args.device = device
-    model = solver_RNN(
+    model = Solver(
         model,
         args.embedding_size,
         args.hidden_size,
@@ -31,6 +36,38 @@ def load(model: object, name: str, device: str) -> object:
     model.to(device)
     model.eval()
     return model, args
+
+CONST = 100000.0
+def calc_dist(p, q):
+    return np.sqrt(((p[1] - q[1])**2)+((p[0] - q[0])**2)) * CONST
+
+def batch_calc_dist(p, q):
+    return torch.sqrt(((p[:, 1] - q[:, 1])**2)+((p[:, 0] - q[:, 0])**2)) * CONST
+
+def get_distance_matrix(pointset, device='cpu'):
+    batch_size, num_points, dims = pointset.shape
+    ret_matrix = torch.zeros((batch_size, num_points, num_points)).to(device)
+    for i in range(num_points):
+        for j in range(i+1, num_points):
+            ret_matrix[:,i,j] = ret_matrix[:,j,i] = batch_calc_dist(pointset[:, i], pointset[:, j])
+    return ret_matrix
+
+def get_ref_reward(pointset):
+    if isinstance(pointset, torch.cuda.FloatTensor):
+        pointset = pointset.cpu()
+    if isinstance(pointset, torch.FloatTensor):
+        pointset = pointset.detach().numpy()
+
+    num_points = len(pointset)
+    ret_matrix = np.zeros((num_points, num_points))
+    for i in range(num_points):
+        for j in range(i+1, num_points):
+            ret_matrix[i,j] = ret_matrix[j,i] = calc_dist(pointset[i], pointset[j])
+    q = elkai.solve_float_matrix(np.round(ret_matrix).astype(int)) # Output: [0, 2, 1]
+    dist = 0
+    for i in range(num_points):
+        dist += ret_matrix[q[i], q[(i+1) % num_points]]
+    return dist / CONST
 
 def compute_solution(model, tsp_dataset):
     data_loader = DataLoader(
@@ -45,63 +82,3 @@ def compute_solution(model, tsp_dataset):
         points[i] = tensor.squeeze().detach().numpy()
 
     return paths[0]
-
-def plot_tsp(points, path: Optional[torch.tensor] = None) -> None:
-
-    """
-    path: List of lists with the different orders in which the nodes are visited
-    points: coordinates for the different nodes
-    num_iters: number of paths that are in the path list
-    
-    """
-
-    # Unpack the primary TSP path and transform it into a list of ordered 
-    # coordinates
-
-    if path is not None:
-        ordered_points = points[path]
-    else:
-        ordered_points = points
-
-    x = list(ordered_points[:, 0].numpy())
-    y = list(ordered_points[:, 1].numpy())
-    
-    margin = 4 # buffer to add to the range
-    y_min = min(y) - margin
-    y_max = max(y) + margin
-    x_min = min(x) - margin
-    x_max = max(x) + margin
-
-    # create map using BASEMAP
-    map = Basemap(
-        llcrnrlon=x_min,
-        llcrnrlat=y_min,
-        urcrnrlon=x_max,
-        urcrnrlat=y_max,
-        lat_0=(y_max - y_min)/2,
-        lon_0=(x_max-x_min)/2,
-        projection='merc',
-        resolution = 'l',
-        area_thresh=10000.
-    )
-    map.drawcoastlines()
-    map.drawcountries()
-    map.drawstates()
-    map.drawmapboundary(fill_color='#46bcec')
-    map.fillcontinents(color = 'white',lake_color='#46bcec')
-    # convert lat and lon to map projection coordinates
-    x, y = map(x, y)
-    
-    # plot points as red dots
-    map.scatter(x, y, marker = 'o', color='b', zorder=5, s=10)
-
-    a_scale = float(max(x))/float(60)
-
-    if path is not None:
-        # Draw the primary path for the TSP problem
-        plt.arrow(x[-1], y[-1], (x[0] - x[-1]), (y[0] - y[-1]), head_width = a_scale, 
-                color ='blue', length_includes_head=True, zorder=5)
-        for i in range(0,len(x)-1):
-            plt.arrow(x[i], y[i], (x[i+1] - x[i]), (y[i+1] - y[i]), head_width = a_scale,
-                    color = 'blue', length_includes_head = True, zorder=5)
-    plt.show()

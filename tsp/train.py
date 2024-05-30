@@ -3,8 +3,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .solver import solver_RNN
-from .heuristic import get_ref_reward
+from .solver import Solver
+from .util import get_ref_reward
 
 
 def train(train_dataset, test_dataset, args):
@@ -27,7 +27,7 @@ def train(train_dataset, test_dataset, args):
     for i, pointset in tqdm(test_dataset, disable=args.disable_tqdm):
         heuristic_distance[i] = get_ref_reward(pointset)
 
-    model = solver_RNN(
+    model = Solver(
         args.model,
         args.embedding_size,
         args.hidden_size,

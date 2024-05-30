@@ -4,10 +4,10 @@ from torch.autograd import Variable
 
 
 class Solver(nn.Module):
-    def __init__(self):
+    def __init__(self, model, *args):
         super(Solver, self).__init__()
 
-        self.actor = None
+        self.actor = model(*args)
 
     def reward(self, sample_solution):
         """
@@ -36,15 +36,3 @@ class Solver(nn.Module):
         R = self.reward(inputs.gather(1, actions.unsqueeze(2).repeat(1, 1, 2)))
 
         return R, probs, actions
-
-
-
-class solver_RNN(Solver):
-    def __init__(
-        self,
-        model,
-        *args
-    ):
-        super(solver_RNN, self).__init__()
-
-        self.actor = model(*args)

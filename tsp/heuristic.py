@@ -2,122 +2,77 @@ import elkai
 import numpy as np
 import torch
 
-CONST = 100000.0
-def calc_dist(p, q):
-    return np.sqrt(((p[1] - q[1])**2)+((p[0] - q[0])**2)) * CONST
+"""
+TSP heuristic types:
+    1. Tour construction
+      + a. Nearest Neighbor: Go to the the nearest city until no unvisited
+        cities.
+      + b. Greedy: Construct tour by adding shortest edge that doesn't create a
+        cycle or increase the degree of any node.
+      + c. Nearest/Farthest Insertion: Start with shortest edge as subtour,
+        select a city that has the shortest/farthest distance to subtour, find
+        edge s.t. insertion of city is minimum cost, repeat.
+      / d. Convex Hull: Start with convex hull as subtour, find cheapest
+        insertion for each city not in subtour, insert cheapest, repeat.
+        (nearest insertion but initialize with convex hull)
+      - e. Christofides: Start with MST, create minimum weight matching on odd
+        degree nodes and add to MST, create Euler cycle from combined graph and
+        traverse with shortcuts
+    2. Tour improvement
+        a. 2-opt: Given a tour, remove two edges and reconnect (cross) the two
+        paths if cheaper, repeat until convergence (2-optimal)
+        b. 3-opt: Given a tour, remove three edges and reconnect if cheaper,
+        repeat until convergence
+        c. k-opt: Generalization of the above
+        d. Lin-Kernighan: Dynamically selects k at each iteration
+        (see https://arxiv.org/pdf/2110.07983)
+        e: Tabu-search/Simulated Annealing/Genetic Algorithms: Extensions of the
+        above
 
-def batch_calc_dist(p, q):
-    return torch.sqrt(((p[:, 1] - q[:, 1])**2)+((p[:, 0] - q[:, 0])**2)) * CONST
+ref: http://160592857366.free.fr/joe/ebooks/ShareData/Heuristics%20for%20the%20Traveling%20Salesman%20Problem%20By%20Christian%20Nillson.pdf
+"""
 
-def get_ref_reward(pointset):
-    if isinstance(pointset, torch.cuda.FloatTensor):
-        pointset = pointset.cpu()
-    if isinstance(pointset, torch.FloatTensor):
-        pointset = pointset.detach().numpy()
-
-    num_points = len(pointset)
-    ret_matrix = np.zeros((num_points, num_points))
-    for i in range(num_points):
-        for j in range(i+1, num_points):
-            ret_matrix[i,j] = ret_matrix[j,i] = calc_dist(pointset[i], pointset[j])
-    q = elkai.solve_float_matrix(np.round(ret_matrix).astype(int)) # Output: [0, 2, 1]
-    dist = 0
-    for i in range(num_points):
-        dist += ret_matrix[q[i], q[(i+1) % num_points]]
-    return dist / CONST
-
-def get_distance_matrix(pointset, device='cpu'):
-    batch_size, num_points, dims = pointset.shape
-    ret_matrix = torch.zeros((batch_size, num_points, num_points)).to(device)
-    for i in range(num_points):
-        for j in range(i+1, num_points):
-            ret_matrix[:,i,j] = ret_matrix[:,j,i] = batch_calc_dist(pointset[:, i], pointset[:, j])
-    return ret_matrix
-
-
-# def get_ordered_sub_tour(sub_tour,placements):
-#     len_sub_tour = len(sub_tour)
-#     ordered_sub_tour = np.zeros(len_sub_tour,dtype = int)
-
-#     return ordered_sub_tour
-
-def nearest_neighbor(pointset, subtour, placements=None, device='cpu'):
-    """
-    This function returns the next node from the nearest neighbor sequential heuristic.
-    
-    Args:
-        distance_matrix: 2D matrix whose i,j^th element is the distance on i -> j
-        subtour: list of selected city indices, placements is not used for this
-    """
-    distance_matrix = get_distance_matrix(pointset, device=device)
-    batch_size, num_cities, _ = distance_matrix.shape
-    if subtour.size == 0:
-        raise ValueError("Subtour is empty.")
-    last_city = subtour[:, -1][:, None]
-    curr_min_dist = 2 * CONST * torch.ones(batch_size).to(device)
-    chosen_city_index = torch.zeros(batch_size).to(device)
-    for i in range(num_cities):
-        curr_dist = distance_matrix[:, :, i].gather(dim=1, index=last_city).squeeze(1)
-        curr_dist += torch.nan_to_num(np.inf * torch.sum(i == subtour, dim=1))
-        chosen_city_index[curr_dist < curr_min_dist] = i
-        curr_min_dist, _ = torch.min(torch.stack((curr_dist, curr_min_dist)), dim=0)
-
-    return chosen_city_index
-    
-# def nearest(distance_matrix,sub_tour,placement):
-#     """Input: distance_matrix: 2D tensor, distance from i -> j is i,j^th element,
-#     sub_tour: list of city indices,
-#     placement: list of index of placement of each city"""
-
-#     if len(sub_tour) == 0:
-#         return 0
-#     num_cities = np.shape(distance_matrix)[0]
-#     #we find the closest city to the subtour
-#     min_dist = np.inf
-#     best_city = 0
-#     for i in range(num_cities):
-#         if i in sub_tour:
-#             continue
-#         local_min_dist = np.inf
-#         for j in sub_tour:
-#             curr_dist = distance_matrix[i,j]
-#             if curr_dist < local_min_dist:
-#                 local_min_dist = curr_dist
-#         if local_min_dist < min_dist:
-#             min_dist = local_min_dist
-#             best_city = i
-#     #now we find the optimal place to put the city
-
-
-    
-    
-            
+class InsertionHeuristic:
+    def __init__(self, mode):
+        self.mode = mode
         
+    def __call__(self, pointset, subtour):
+        eps = 1e-6
+        B, V, D = pointset.shape
+        S = subtour.shape[-1]
+        subpoints = pointset.gather(1, subtour.unsqueeze(2).expand(-1, -1, D))
+        dists = torch.cdist(subpoints, pointset)
+        mask = torch.ones(B, V)
+        i = torch.arange(B).long()
+
+        if self.mode == "nearest":
+            mask[i[:, None], subtour] = np.inf
+            dists = (dists + eps) * mask.unsqueeze(1).expand(B, S, V)
+            n_min, n_idx = torch.min(dists, dim=-1)
+            s_min, s_idx = torch.min(n_min, dim=-1)
+        elif self.mode == "farthest":
+            mask[i[:, None], subtour] = -np.inf
+            dists = (dists + eps) * mask.unsqueeze(1).expand(B, S, V)
+            n_min, n_idx = torch.max(dists, dim=-1)
+            s_min, s_idx = torch.max(n_min, dim=-1)
+        ins = n_idx.gather(1, s_idx.unsqueeze(1)).squeeze(-1)
+        inspoints = pointset[i, ins]
+
+        sub_dists = torch.norm(subpoints - torch.roll(subpoints, -1, dims=1), dim=-1)
+        ins_dists = torch.cdist(subpoints, inspoints.unsqueeze(1)).squeeze(-1)
+        nsi_dists = torch.roll(ins_dists, -1, dims=1)
+
+        costs = ins_dists + nsi_dists - sub_dists
+        idx = subtour[i, torch.argmin(costs, dim=-1)]
+
+        return ins, idx
 
 
+class NearestInsertion(InsertionHeuristic):
+    def __init__(self):
+        super(NearestInsertion, self).__init__("nearest")
 
-# def farthest(distance_matrix,sub_tour,placement):
-#     """Input: distance_matrix: 2D tensor, distance from i -> j is i,j^th element,
-#     sub_tour: list of city indices,
-#     placement: list of index of placement of each city"""
-#     if len(sub_tour) == 0:
-#         return 0
-#     num_cities = np.shape(distance_matrix)[0]
-#     #we find the farthest city to the subtour
-#     for i in range(num_cities):
-#         if i in sub_tour:
-#             continue
-#         max_dist = -np.inf
-#         best_city = 0
-#         for i in range(num_cities):
-#             if i in sub_tour:
-#                 continue
-#             local_max_dist = -np.inf
-#             for j in sub_tour:
-#                 curr_dist = distance_matrix[i,j]
-#                 if curr_dist > local_max_dist:
-#                     local_max_dist = curr_dist
-#             if local_max_dist > max_dist:
-#                 max_dist = local_max_dist
-#                 best_city = i
-# print(get_distance_matrix(torch.tensor([[1,2],[3,4]])))
+
+class FarthestInsertion(InsertionHeuristic):
+    def __init__(self):
+        super(FarthestInsertion, self).__init__("farthest")
