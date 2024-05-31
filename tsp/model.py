@@ -75,6 +75,7 @@ class RNNTSP(torch.nn.Module):
         self.encoder = LSTM(hidden_size, hidden_size, batch_first=True)
         self.decoder = LSTM(hidden_size, hidden_size, batch_first=True)
         self.pointer = Attention(hidden_size, C=tanh_exploration)
+        self.ins_ptr = Attention(hidden_size, C=tanh_exploration)
 
         self.glimpse = Attention(hidden_size)
         self.decoder_start_input = Parameter(torch.FloatTensor(embedding_size))
@@ -97,7 +98,9 @@ class RNNTSP(torch.nn.Module):
         batch_size = inputs.shape[0]
         seq_len = inputs.shape[1]
         prev_chosen_logprobs = []
+        prev_chosen_insprobs = []
         prev_chosen_indices = []
+        prev_chosen_inserts = []
 
         def _encode(inputs):
             """
@@ -125,6 +128,7 @@ class RNNTSP(torch.nn.Module):
 
         # For each batch, all points initially available
         mask = torch.zeros(batch_size, self.seq_len, dtype=torch.bool)
+        pos = torch.ones(batch_size, self.seq_len, dtype=torch.bool)
 
         # Initial decoder input vector
         decoder_input = self.decoder_start_input \
@@ -132,7 +136,7 @@ class RNNTSP(torch.nn.Module):
             .repeat(batch_size, 1)
 
         # Iterate through decoding decisions
-        for _ in range(seq_len):
+        for i in range(seq_len):
 
             def _decode(decoder_input, hidden, context):
                 """
@@ -160,7 +164,7 @@ class RNNTSP(torch.nn.Module):
             self.query, self.hidden, self.context = _decode(decoder_input, self.hidden, self.context)
             self.query = self.glimpses(self.query, self.encoder_outputs, mask=mask.clone())
   
-            def _attend(query, encoder_outputs, mask):
+            def _attend(query, encoder_outputs, mask, pointer):
                 """
                 Compute and sample from a distribution over cities that have not
                     yet been visited.
@@ -181,7 +185,7 @@ class RNNTSP(torch.nn.Module):
                         chosen[i] gives the index of the next city to visit in
                         batch i
                 """
-                target, logits = self.pointer(query, encoder_outputs, mask)
+                target, logits = pointer(query, encoder_outputs, mask)
                 probs = torch.softmax(logits, dim=-1)
                 cat = Categorical(probs=probs)
                 chosen = cat.sample()
@@ -189,19 +193,27 @@ class RNNTSP(torch.nn.Module):
 
                 return cat, chosen
 
-            self.cat, self.chosen = _attend(self.query, self.encoder_outputs, mask=mask.clone())
+            pos[i] = False
+            self.cat, self.chosen = _attend(self.query, self.encoder_outputs,
+                                            mask=mask.clone(), pointer=self.pointer)
+            self.ins, self.insert = _attend(self.query, self.encoder_outputs,
+                                            mask=pos.clone(), pointer=self.ins_ptr)
 
             # Mark visited cities, update decoder input
             log_probs = self.cat.log_prob(self.chosen)
+            ins_probs = self.ins.log_prob(self.insert)
             prev_chosen_logprobs.append(log_probs)
+            prev_chosen_insprobs.append(ins_probs)
 
             # Force heuristic
             if torch.rand(1) < self.force_prob and len(prev_chosen_indices) > 0:
-                self.chosen = self.heuristic(inputs, torch.stack(prev_chosen_indices, 1))
+                self.chosen, self.insert = self.heuristic(inputs, torch.stack(prev_chosen_indices, 1))
 
             # Append chosen city
             prev_chosen_indices.append(self.chosen)
+            prev_chosen_inserts.append(self.insert)
             mask[[i for i in range(batch_size)], self.chosen] = True
             decoder_input = self.embedded.gather(1, self.chosen[:, None, None].repeat(1, 1, self.hidden_size)).squeeze(1)
 
-        return torch.stack(prev_chosen_logprobs, 1), torch.stack(prev_chosen_indices, 1)
+        return (torch.stack(prev_chosen_logprobs, 1), torch.stack(prev_chosen_insprobs, 1)), \
+               (torch.stack(prev_chosen_indices, 1), torch.stack(prev_chosen_inserts, 1))

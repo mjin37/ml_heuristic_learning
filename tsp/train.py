@@ -63,12 +63,14 @@ def train(train_dataset, test_dataset, args):
         for batch_idx, (indices, sample_batch) in enumerate(train_data_loader):
             if args.use_cuda:
                 sample_batch = sample_batch.cuda()
-            rewards, log_probs, action = model(sample_batch)
+            rewards, (log_probs, ins_probs), (action, inserts) = model(sample_batch)
             moving_avg[indices] = moving_avg[indices] * args.beta + rewards * (1.0 - args.beta)
             advantage = rewards - moving_avg[indices]
             log_probs = torch.sum(log_probs, dim=-1)
+            ins_probs = torch.sum(ins_probs, dim=-1)
             log_probs[log_probs < -100] = -100
-            loss = (advantage * log_probs).mean()
+            ins_probs[ins_probs < -100] = -100
+            loss = (advantage * (log_probs + ins_probs)).mean()
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)

@@ -82,12 +82,13 @@ class InsertionHeuristic(TSPHeuristic):
         ins = n_idx.gather(1, s_idx.unsqueeze(1)).squeeze(-1)
         inspoints = pointset[i, ins]
 
-        sub_dists = torch.norm(subpoints - torch.roll(subpoints, -1, dims=1), dim=-1)
+        sub_dists = torch.norm(subpoints - torch.roll(subpoints, 1, dims=1), dim=-1)
         ins_dists = torch.cdist(subpoints, inspoints.unsqueeze(1)).squeeze(-1)
-        nsi_dists = torch.roll(ins_dists, -1, dims=1)
+        nsi_dists = torch.roll(ins_dists, 1, dims=1)
 
         costs = ins_dists + nsi_dists - sub_dists
-        idx = subtour[i, torch.argmin(costs, dim=-1)]
+        idx = torch.argmin(costs, dim=-1)               # return relative index
+#       idx = subtour[i, torch.argmin(costs, dim=-1)]   # return node to insert after
 
         return ins, idx
 

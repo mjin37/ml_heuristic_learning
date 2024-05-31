@@ -33,6 +33,6 @@ class Solver(nn.Module):
             inputs: [batch_size, input_size, seq_len]
         """
         probs, actions = self.actor(inputs)
-        R = self.reward(inputs.gather(1, actions.unsqueeze(2).repeat(1, 1, 2)))
+        R = self.reward(inputs.gather(1, actions[0].unsqueeze(2).repeat(1, 1, 2)))
 
         return R, probs, actions
