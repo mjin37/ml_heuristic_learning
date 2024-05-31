@@ -1,5 +1,5 @@
 import torch
-from tsp.heuristic import InsertionHeuristic
+from tsp.heuristic import InsertionHeuristic, NearestNeighbor
 
 pointset = torch.tensor([[1,1],[2,1],[0,0],[2,2],[10,10],[-10,-10]])
 subtour = torch.tensor([2,0,3])
@@ -15,4 +15,5 @@ print(subtour)
 print()
 
 heuristic = InsertionHeuristic("nearest")
+heuristic = NearestNeighbor()
 print(heuristic(pointset, subtour))

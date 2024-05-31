@@ -32,6 +32,22 @@ TSP heuristic types:
 ref: http://160592857366.free.fr/joe/ebooks/ShareData/Heuristics%20for%20the%20Traveling%20Salesman%20Problem%20By%20Christian%20Nillson.pdf
 """
 
+class NearestNeighbor:
+    def __call__(self, pointset, subtour):
+        eps = 1e-6
+        B, V, D = pointset.shape
+        S = subtour.shape[-1]
+        subpoints = pointset.gather(1, subtour.unsqueeze(2).expand(-1, -1, D))
+        last = subpoints[:, -1, :].unsqueeze(1)
+        dists = torch.cdist(last, pointset)
+        mask, i = torch.ones(B, V), torch.arange(B).long()
+        mask[i[:, None], subtour] = np.inf
+        dists = (dists + eps) * mask.unsqueeze(1)
+        _, idx = torch.min(dists, dim=-1)
+
+        return idx.squeeze(-1)
+
+
 class InsertionHeuristic:
     def __init__(self, mode):
         self.mode = mode
@@ -42,8 +58,7 @@ class InsertionHeuristic:
         S = subtour.shape[-1]
         subpoints = pointset.gather(1, subtour.unsqueeze(2).expand(-1, -1, D))
         dists = torch.cdist(subpoints, pointset)
-        mask = torch.ones(B, V)
-        i = torch.arange(B).long()
+        mask, i = torch.ones(B, V), torch.arange(B).long()
 
         if self.mode == "nearest":
             mask[i[:, None], subtour] = np.inf

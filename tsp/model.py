@@ -197,8 +197,7 @@ class RNNTSP(torch.nn.Module):
 
             # Force heuristic
             if torch.rand(1) < self.force_prob and len(prev_chosen_indices) > 0:
-                self.chosen, _ = self.heuristic(inputs, torch.stack(prev_chosen_indices, 1))
-            # TODO, second attention head
+                self.chosen = self.heuristic(inputs, torch.stack(prev_chosen_indices, 1))
 
             # Append chosen city
             prev_chosen_indices.append(self.chosen)
