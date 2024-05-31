@@ -86,7 +86,7 @@ def train(train_dataset, test_dataset, args):
 
         approximation_ratio = (R / heuristic_distance).mean().detach().numpy()
         print(f"[At epoch {epoch}] RL model approximation: {approximation_ratio}")
-        print("AVG R", R.mean().detach().numpy())
+        print("AVG R", R.mean().detach().numpy(), flush=True)
 
         if approximation_ratio < best_approx_ratio:
             best_model = model

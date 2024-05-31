@@ -32,7 +32,14 @@ TSP heuristic types:
 ref: http://160592857366.free.fr/joe/ebooks/ShareData/Heuristics%20for%20the%20Traveling%20Salesman%20Problem%20By%20Christian%20Nillson.pdf
 """
 
-class NearestNeighbor:
+class TSPHeuristic:
+    def __init__(self, device):
+        self.device = device
+
+    def __call__(self, pointset, subtour):
+        pass
+
+class NearestNeighbor(TSPHeuristic):
     def __call__(self, pointset, subtour):
         eps = 1e-6
         B, V, D = pointset.shape
@@ -40,7 +47,7 @@ class NearestNeighbor:
         subpoints = pointset.gather(1, subtour.unsqueeze(2).expand(-1, -1, D))
         last = subpoints[:, -1, :].unsqueeze(1)
         dists = torch.cdist(last, pointset)
-        mask, i = torch.ones(B, V), torch.arange(B).long()
+        mask, i = torch.ones(B, V).to(self.device), torch.arange(B).long().to(self.device)
         mask[i[:, None], subtour] = np.inf
         dists = (dists + eps) * mask.unsqueeze(1)
         _, idx = torch.min(dists, dim=-1)
@@ -48,8 +55,10 @@ class NearestNeighbor:
         return idx.squeeze(-1)
 
 
-class InsertionHeuristic:
-    def __init__(self, mode):
+class InsertionHeuristic(TSPHeuristic):
+    def __init__(self, mode, device):
+        super(InsertionHeuristic, self).__init__(device)
+
         self.mode = mode
         
     def __call__(self, pointset, subtour):
@@ -58,7 +67,7 @@ class InsertionHeuristic:
         S = subtour.shape[-1]
         subpoints = pointset.gather(1, subtour.unsqueeze(2).expand(-1, -1, D))
         dists = torch.cdist(subpoints, pointset)
-        mask, i = torch.ones(B, V), torch.arange(B).long()
+        mask, i = torch.ones(B, V).to(device), torch.arange(B).long().to(device)
 
         if self.mode == "nearest":
             mask[i[:, None], subtour] = np.inf
@@ -84,10 +93,10 @@ class InsertionHeuristic:
 
 
 class NearestInsertion(InsertionHeuristic):
-    def __init__(self):
-        super(NearestInsertion, self).__init__("nearest")
+    def __init__(self, device):
+        super(NearestInsertion, self).__init__("nearest", device)
 
 
 class FarthestInsertion(InsertionHeuristic):
-    def __init__(self):
-        super(FarthestInsertion, self).__init__("farthest")
+    def __init__(self, device):
+        super(FarthestInsertion, self).__init__("farthest", device)
