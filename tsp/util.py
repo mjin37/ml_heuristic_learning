@@ -30,7 +30,9 @@ def load(model: object, name: str, device: str) -> object:
         args.hidden_size,
         args.seq_len,
         2,
-        10
+        10,
+        args.force_prob,
+        args.heuristic
     )
     model.load_state_dict(torch.load(path, map_location='cpu'))
     model.to(device)
