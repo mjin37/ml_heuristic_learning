@@ -193,7 +193,7 @@ class RNNTSP(torch.nn.Module):
 
                 return cat, chosen
 
-            pos[i] = False
+            pos[:, i] = False
             self.cat, self.chosen = _attend(self.query, self.encoder_outputs,
                                             mask=mask.clone(), pointer=self.pointer)
             self.ins, self.insert = _attend(self.query, self.encoder_outputs,

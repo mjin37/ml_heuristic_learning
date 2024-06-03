@@ -8,6 +8,7 @@ class Solver(nn.Module):
         super(Solver, self).__init__()
 
         self.actor = model(*args)
+        self.device = args.get("device", "cpu")
 
     def reward(self, sample_solution):
         """
@@ -32,7 +33,24 @@ class Solver(nn.Module):
         Args:
             inputs: [batch_size, input_size, seq_len]
         """
-        probs, actions = self.actor(inputs)
-        R = self.reward(inputs.gather(1, actions[0].unsqueeze(2).repeat(1, 1, 2)))
+        probs, (actions, inserts) = self.actor(inputs)
+        actions = self._reorder(actions, inserts)
+        R = self.reward(inputs.gather(1, actions.unsqueeze(2).repeat(1, 1, 2)))
 
         return R, probs, actions
+
+    def _reorder(self, actions, inserts):
+        B, S = actions.shape
+        output = torch.zeros((B, S))
+        i = torch.arange(B).long().to(self.device)
+
+        def kthvalue(input, k, dim=None):
+            sorted, indices = torch.sort(input)
+            return sorted[torch.arange(len(k)), k], indices[torch.arange(len(k)), k]
+
+        for i in range(S):
+            idx = inserts[:, -i]
+            _, kth = kthvalue(output, idx, dim=-1)
+            output[i, kth] = actions[:, -1]
+
+        return output
