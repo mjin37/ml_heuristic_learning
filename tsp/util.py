@@ -79,8 +79,11 @@ def compute_solution(model, tsp_dataset):
 
     paths = [None] * len(data_loader)
     points = [None] * len(data_loader)
+    forced = [None] * len(data_loader)
     for i, (_, tensor) in enumerate(data_loader):
-        paths[i] = model(tensor)[2].detach().numpy()[0]
+        _, _, action, force = model(tensor)
+        paths[i] = action.detach().numpy()[0]
+        forced[i] = force
         points[i] = tensor.squeeze().detach().numpy()
 
-    return paths[0]
+    return paths, forced

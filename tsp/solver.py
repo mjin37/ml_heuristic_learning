@@ -32,7 +32,7 @@ class Solver(nn.Module):
         Args:
             inputs: [batch_size, input_size, seq_len]
         """
-        probs, actions = self.actor(inputs)
+        probs, actions, forced = self.actor(inputs)
         R = self.reward(inputs.gather(1, actions.unsqueeze(2).repeat(1, 1, 2)))
 
-        return R, probs, actions
+        return R, probs, actions, forced

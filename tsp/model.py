@@ -98,6 +98,7 @@ class RNNTSP(torch.nn.Module):
         seq_len = inputs.shape[1]
         prev_chosen_logprobs = []
         prev_chosen_indices = []
+        forced = []
 
         def _encode(inputs):
             """
@@ -196,12 +197,14 @@ class RNNTSP(torch.nn.Module):
             prev_chosen_logprobs.append(log_probs)
 
             # Force heuristic
+            forced.append(0)
             if torch.rand(1) < self.force_prob and len(prev_chosen_indices) > 0:
                 self.chosen = self.heuristic(inputs, torch.stack(prev_chosen_indices, 1))
+                forced[-1] = 1
 
             # Append chosen city
             prev_chosen_indices.append(self.chosen)
             mask[[i for i in range(batch_size)], self.chosen] = True
             decoder_input = self.embedded.gather(1, self.chosen[:, None, None].repeat(1, 1, self.hidden_size)).squeeze(1)
 
-        return torch.stack(prev_chosen_logprobs, 1), torch.stack(prev_chosen_indices, 1)
+        return torch.stack(prev_chosen_logprobs, 1), torch.stack(prev_chosen_indices, 1), forced
