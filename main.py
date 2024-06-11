@@ -23,13 +23,13 @@ class TSPArgs(argparse.Namespace):
         self.model = RNNTSP
         self.seq_len = 30
         self.num_epochs = 200
-        self.num_tr_dataset = 10000
-        self.num_te_dataset = 2000
+        self.num_tr_dataset = 100 # 10000
+        self.num_te_dataset = 20 # 2000
         self.embedding_size = 128
         self.hidden_size = 128
         self.batch_size = 64
         self.grad_clip = 1.5
-        self.use_cuda = True
+        self.use_cuda = False # True
         self.beta = 0.9
         self.force_prob = 1.0
         self.heuristic = NearestNeighbor(device)

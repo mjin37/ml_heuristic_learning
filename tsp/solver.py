@@ -8,7 +8,7 @@ class Solver(nn.Module):
         super(Solver, self).__init__()
 
         self.actor = model(*args)
-        self.device = args.get("device", "cpu")
+        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     def reward(self, sample_solution):
         """
@@ -41,7 +41,7 @@ class Solver(nn.Module):
 
     def _reorder(self, actions, inserts):
         B, S = actions.shape
-        output = torch.zeros((B, S))
+        output = torch.zeros((B, S), dtype=torch.int64)
         i = torch.arange(B).long().to(self.device)
 
         def kthvalue(input, k, dim=None):
