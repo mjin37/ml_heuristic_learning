@@ -1,5 +1,6 @@
 ml4do/
 ckpt/
+forcing/
 archive/
 __pycache__/
 *.tar*
