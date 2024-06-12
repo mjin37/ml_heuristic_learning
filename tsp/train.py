@@ -1,5 +1,6 @@
 import torch
 import torch.optim as optim
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -36,6 +37,7 @@ def train(train_dataset, test_dataset, args):
         10,
         args.force_prob,
         args.heuristic,
+        args.reg,
     )
 
     if args.use_cuda:
@@ -54,7 +56,7 @@ def train(train_dataset, test_dataset, args):
     for (indices, sample_batch) in tqdm(train_data_loader, disable=args.disable_tqdm):
         if args.use_cuda:
             sample_batch = sample_batch.cuda()
-        rewards, _, _, _ = model(sample_batch)
+        rewards, _, _, _, _, _ = model(sample_batch)
         moving_avg[indices] = rewards
 
     # Training
@@ -63,12 +65,13 @@ def train(train_dataset, test_dataset, args):
         for batch_idx, (indices, sample_batch) in enumerate(train_data_loader):
             if args.use_cuda:
                 sample_batch = sample_batch.cuda()
-            rewards, log_probs, action, _ = model(sample_batch)
+            rewards, log_probs, action, forced, logits, hactions = model(sample_batch)
             moving_avg[indices] = moving_avg[indices] * args.beta + rewards * (1.0 - args.beta)
             advantage = rewards - moving_avg[indices]
             log_probs = torch.sum(log_probs, dim=-1)
             log_probs[log_probs < -100] = -100
-            loss = (advantage * log_probs).mean()
+            regularization = args.reg * F.cross_entropy(logits, hactions)
+            loss = (advantage * (log_probs + args.reg * regularization)).mean()
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
@@ -79,7 +82,7 @@ def train(train_dataset, test_dataset, args):
         for i, batch in eval_loader:
             if args.use_cuda:
                 batch = batch.cuda()
-            R, _, _, _ = model(batch)
+            R, _, _, _, _, _ = model(batch)
 
         if args.use_cuda:
             R = R.cpu()

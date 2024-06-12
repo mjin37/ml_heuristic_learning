@@ -60,6 +60,7 @@ class RNNTSP(torch.nn.Module):
         tanh_exploration,
         force_prob,
         heuristic,
+        reg,
     ):
         super(RNNTSP, self).__init__()
 
@@ -70,6 +71,7 @@ class RNNTSP(torch.nn.Module):
 
         self.force_prob = force_prob
         self.heuristic = heuristic
+        self.reg = reg
 
         self.embedding = Linear(2, embedding_size)
         self.encoder = LSTM(hidden_size, hidden_size, batch_first=True)
@@ -99,6 +101,8 @@ class RNNTSP(torch.nn.Module):
         prev_chosen_logprobs = []
         prev_chosen_indices = []
         forced = []
+        ce_logits = []
+        heuristic_indices = []
 
         def _encode(inputs):
             """
@@ -188,9 +192,9 @@ class RNNTSP(torch.nn.Module):
                 chosen = cat.sample()
                 ####################################################################
 
-                return cat, chosen
+                return cat, chosen, logits
 
-            self.cat, self.chosen = _attend(self.query, self.encoder_outputs, mask=mask.clone())
+            self.cat, self.chosen, self.logits = _attend(self.query, self.encoder_outputs, mask=mask.clone())
 
             # Mark visited cities, update decoder input
             log_probs = self.cat.log_prob(self.chosen)
@@ -198,13 +202,19 @@ class RNNTSP(torch.nn.Module):
 
             # Force heuristic
             forced.append(0)
-            if torch.rand(1) < self.force_prob and len(prev_chosen_indices) > 0:
-                self.chosen = self.heuristic(inputs, torch.stack(prev_chosen_indices, 1))
-                forced[-1] = 1
+            if len(prev_chosen_indices) > 0:
+                heuristic_indices.append(self.heuristic(inputs, torch.stack(prev_chosen_indices, 1)))
+                if torch.rand(1) < self.force_prob:
+                    self.chosen = heuristic_indices[-1]
+                    forced[-1] = 1
+            else:
+                heuristic_indices.append(self.chosen)
+            ce_logits.append(self.logits)
 
             # Append chosen city
             prev_chosen_indices.append(self.chosen)
             mask[[i for i in range(batch_size)], self.chosen] = True
             decoder_input = self.embedded.gather(1, self.chosen[:, None, None].repeat(1, 1, self.hidden_size)).squeeze(1)
 
-        return torch.stack(prev_chosen_logprobs, 1), torch.stack(prev_chosen_indices, 1), forced
+        return torch.stack(prev_chosen_logprobs, 1), torch.stack(prev_chosen_indices, 1), forced, \
+               torch.stack(ce_logits, 1), torch.stack(heuristic_indices, 1)
